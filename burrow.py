@@ -15,34 +15,25 @@ CONFIG_DIR = os.path.expanduser("~/.burrow")
 CONFIG_FILE = os.path.join(CONFIG_DIR, "config.json")
 os.makedirs(CONFIG_DIR, exist_ok=True)
 
-A = None
+# ===== HARDCODE YOUR CREDENTIALS HERE =====
+YA_LOGIN = "s0dnet@yandex.ru"
+YA_PASSWORD = "fspgrmbljzdrxeyt"
+# ==========================================
 
-def _get_auth():
-    global A
-    if A is not None:
-        return A
-    config = _load_config()
-    dav_auth = config.get("dav", "")
-    if dav_auth and ":" in dav_auth:
-        login, password = dav_auth.split(":", 1)
-        A = (login, password)
-        return A
-    A = ("", "")
-    return A
+A = (YA_LOGIN, YA_PASSWORD)
 
 def _load_config():
     if os.path.exists(CONFIG_FILE):
         try: return json.load(open(CONFIG_FILE))
         except: pass
-    return {"port": 9000, "upstream": "musicclips.videolinks.ru:8443", "link_id": "", "dav": ""}
+    return {"port": 9000, "upstream": "musicclips.videolinks.ru:8443", "link_id": ""}
 
 def _save_config(cfg):
     with open(CONFIG_FILE, "w") as f: json.dump(cfg, f, indent=2)
 
 def _c():
-    auth = _get_auth()
     for f in ["offer.sdp", "answer.sdp"]:
-        try: requests.delete(f"{W}/{f}", auth=auth)
+        try: requests.delete(f"{W}/{f}", auth=A)
         except: pass
 
 def _sig_handler(sig, frame):
@@ -195,19 +186,16 @@ def _g(link_id):
 
 def _u(f, data):
     if _quit_flag: return
-    auth = _get_auth()
-    requests.put(f"{W}/{f}", data=data.encode() if isinstance(data, str) else data, auth=auth)
+    requests.put(f"{W}/{f}", data=data.encode() if isinstance(data, str) else data, auth=A)
 
 def _d(f):
     if _quit_flag: return None
-    auth = _get_auth()
-    r = requests.get(f"{W}/{f}", auth=auth)
+    r = requests.get(f"{W}/{f}", auth=A)
     return r.text if r.status_code == 200 else None
 
 def _del(f):
     if _quit_flag: return
-    auth = _get_auth()
-    requests.delete(f"{W}/{f}", auth=auth)
+    requests.delete(f"{W}/{f}", auth=A)
 
 def _wd(f):
     while not _quit_flag:
@@ -478,47 +466,6 @@ async def run_p2p(link_id, port):
     
     await asyncio.gather(down(), up())
 
-def _oobe():
-    print("Burrow VPN - Out Of Box Experience\n")
-    print("Testing WebDAV authentication...")
-    
-    login = input("Email: ")
-    password = input("Password: ")
-    
-    if not login or not password:
-        print("Credentials required")
-        return False
-    
-    try:
-        auth = (login, password)
-        test_file = f"test_{uuid.uuid4().hex[:8]}.txt"
-        test_data = f"burrow_test_{int(time.time())}"
-        
-        put_r = requests.put(f"{W}/{test_file}", data=test_data, auth=auth, timeout=10)
-        if put_r.status_code not in [200, 201]:
-            print(f"Write failed: HTTP {put_r.status_code}")
-            return False
-        
-        get_r = requests.get(f"{W}/{test_file}", auth=auth, timeout=10)
-        if get_r.status_code != 200 or get_r.text != test_data:
-            print(f"Read failed: HTTP {get_r.status_code}")
-            return False
-        
-        requests.delete(f"{W}/{test_file}", auth=auth, timeout=10)
-        
-        print("WebDAV working correctly!")
-        
-        config = _load_config()
-        config["dav"] = f"{login}:{password}"
-        _save_config(config)
-        print("Credentials saved to ~/.burrow/config.json")
-        
-        return True
-        
-    except Exception as e:
-        print(f"WebDAV error: {e}")
-        return False
-
 if __name__ == "__main__":
     config = _load_config()
     p = argparse.ArgumentParser()
@@ -526,13 +473,8 @@ if __name__ == "__main__":
     p.add_argument("--p2p", action="store_true", help="P2P mode")
     p.add_argument("--port", type=int, default=config.get("port", 9000))
     p.add_argument("--upstream", default=config.get("upstream", "musicclips.videolinks.ru:8443"))
-    p.add_argument("--oobe", action="store_true", help="Test WebDAV credentials")
     p.add_argument("link_id", nargs="?", default=config.get("link_id", ""))
     a = p.parse_args()
-    
-    if a.oobe:
-        _oobe()
-        sys.exit(0)
     
     config["port"] = a.port
     config["upstream"] = a.upstream
