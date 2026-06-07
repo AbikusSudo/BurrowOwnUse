@@ -857,35 +857,4 @@ if __name__ == "__main__":
     try:
         asyncio.run(b.start(a.link_id))
     except KeyboardInterrupt:
-        pass name: Burrow VPN Server
-
-on:
-  schedule:
-    - cron: '0 */6 * * *'
-  workflow_dispatch:
-
-jobs:
-  tunnel:
-    runs-on: ubuntu-latest
-    timeout-minutes: 360
-    
-    steps:
-    - name: Checkout repo
-      uses: actions/checkout@v4
-    
-    - name: Install dependencies
-      run: |
-        pip install aioice requests rich
-    
-    - name: Setup config
-      run: |
-        mkdir -p ~/.burrow
-        cat > ~/.burrow/config.json << EOF
-        {
-          "dav": "${{ secrets.YA_LOGIN }}:${{ secrets.YA_PASSWORD }}"
-        }
-        EOF
-    
-    - name: Run server
-      run: |
-        python burrow.py -s
+        pass
