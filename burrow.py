@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Burrow VPN - Simplified
+Burrow VPN
 Copyright (c) 2026 unaliovable
 """
 
@@ -47,7 +47,9 @@ def _c():
 
 def _sig_handler(sig, frame):
     global _quit_flag
-    _quit_flag = True; _c(); sys.exit(0)
+    _quit_flag = True
+    _c()
+    sys.exit(0)
 
 signal.signal(signal.SIGINT, _sig_handler)
 signal.signal(signal.SIGTERM, _sig_handler)
@@ -56,7 +58,6 @@ def _resolve(host, dns='77.88.8.8'):
     try: socket.inet_aton(host); return host
     except: pass
     try:
-        import struct
         tid = os.urandom(2); flags = 0x0100
         header = struct.pack('!HHHHHH', int.from_bytes(tid, 'big'), flags, 1, 0, 0, 0)
         qname = b''.join(bytes([len(l)]) + l.encode() for l in host.split('.')) + b'\x00'
@@ -236,61 +237,16 @@ async def _best_connection(turn_list, stun):
             continue
     raise Exception("All TURN servers failed")
 
-def start_http_proxy(start_port=9099):
-    from http.server import HTTPServer, BaseHTTPRequestHandler
-    port = start_port
-    while True:
-        try:
-            server = HTTPServer(('127.0.0.1', port), WebDAVProxyHandler)
-            thread = threading.Thread(target=server.serve_forever, daemon=True)
-            thread.start()
-            return server, port
-        except OSError:
-            port += 1
-            if port > start_port + 100:
-                raise Exception("No free ports for HTTP proxy")
-
-class WebDAVProxyHandler(BaseHTTPRequestHandler):
-    def do_GET(self):
-        try:
-            path = self.path
-            data = _d(path.lstrip('/'))
-            if data:
-                self.send_response(200)
-                self.send_header('Content-Type', 'application/octet-stream')
-                self.end_headers()
-                self.wfile.write(data.encode() if isinstance(data, str) else data)
-            else:
-                self.send_response(404)
-                self.end_headers()
-        except Exception:
-            self.send_response(500)
-            self.end_headers()
-    
-    def do_PUT(self):
-        try:
-            length = int(self.headers.get('Content-Length', 0))
-            data = self.rfile.read(length)
-            path = self.path.lstrip('/')
-            _u(path, data)
-            self.send_response(200)
-            self.end_headers()
-        except Exception:
-            self.send_response(500)
-            self.end_headers()
-    
-    def do_POST(self):
-        self.do_PUT()
-    
-    def log_message(self, format, *args):
-        pass
-
 async def run_server():
     print("[Burrow] Server mode - waiting for client...")
+    sys.stdout.flush()
+    
     while not _quit_flag:
         of_str = _d("offer.sdp")
         if of_str and not _d("answer.sdp"):
             print("[Burrow] Got offer from client")
+            sys.stdout.flush()
+            
             try:
                 offer = json.loads(of_str)
                 _del("offer.sdp")
@@ -299,6 +255,7 @@ async def run_server():
                     continue
                 
                 print("[Burrow] Getting TURN from link...")
+                sys.stdout.flush()
                 turn_list, stun = await asyncio.get_event_loop().run_in_executor(None, _g, link_id)
                 conn = await _best_connection(turn_list, stun)
                 
@@ -315,21 +272,25 @@ async def run_server():
                 _u("answer.sdp", json.dumps(answer))
                 await conn.connect()
                 print("[Burrow] Tunnel established!")
+                sys.stdout.flush()
                 
                 while not _quit_flag:
                     if not _d("answer.sdp"):
                         print("[Burrow] Client disconnected")
+                        sys.stdout.flush()
                         break
                     await asyncio.sleep(2)
                     
             except Exception as e:
                 print(f"[Burrow] Error: {e}")
+                sys.stdout.flush()
                 _del("answer.sdp")
         await asyncio.sleep(1)
 
 async def run_client(link_id, upstream, port):
     print(f"[Burrow] Client mode - link: {link_id}")
     print("[Burrow] Getting TURN credentials...")
+    sys.stdout.flush()
     
     turn_list, stun = await asyncio.get_event_loop().run_in_executor(None, _g, link_id)
     conn = await _best_connection(turn_list, stun)
@@ -345,6 +306,7 @@ async def run_client(link_id, upstream, port):
             "link_id": link_id}
     _u("offer.sdp", json.dumps(offer))
     print("[Burrow] Offer sent, waiting for answer...")
+    sys.stdout.flush()
     
     ans_str = await asyncio.get_event_loop().run_in_executor(None, _wd, "answer.sdp")
     ans = json.loads(ans_str)
@@ -358,6 +320,7 @@ async def run_client(link_id, upstream, port):
     await conn.connect()
     
     print("[Burrow] Connected!")
+    sys.stdout.flush()
     
     if upstream and upstream != "musicclips.videolinks.ru:8443":
         await conn.send(f"UPSTREAM:{upstream}".encode())
@@ -374,6 +337,7 @@ async def run_client(link_id, upstream, port):
     
     print(f"[Burrow] UDP tunnel on 127.0.0.1:{port}")
     print("[Burrow] Ready! Press Ctrl+C to stop")
+    sys.stdout.flush()
     
     queue = asyncio.Queue()
     last_addr = None
@@ -417,6 +381,7 @@ async def run_client(link_id, upstream, port):
 
 async def run_p2p(link_id, port):
     print(f"[Burrow] P2P mode - link: {link_id}")
+    sys.stdout.flush()
     
     turn_list, stun = await asyncio.get_event_loop().run_in_executor(None, _g, link_id)
     conn = await _best_connection(turn_list, stun)
@@ -427,6 +392,7 @@ async def run_p2p(link_id, port):
     
     if of_str and not _d("answer.sdp"):
         print("[Burrow] Answering peer offer")
+        sys.stdout.flush()
         offer = json.loads(of_str)
         _del("offer.sdp")
         for c_sdp in offer["candidates"]:
@@ -442,6 +408,7 @@ async def run_p2p(link_id, port):
         await conn.connect()
     else:
         print("[Burrow] Creating offer for peer")
+        sys.stdout.flush()
         _del("offer.sdp")
         _del("answer.sdp")
         offer = {"candidates": [c.to_sdp() for c in conn.local_candidates],
@@ -460,6 +427,7 @@ async def run_p2p(link_id, port):
         await conn.connect()
     
     print("[Burrow] P2P connected!")
+    sys.stdout.flush()
     
     vs = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     vs.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -468,6 +436,7 @@ async def run_p2p(link_id, port):
     vs.settimeout(0.5)
     
     print(f"[Burrow] UDP tunnel on 127.0.0.1:{port}")
+    sys.stdout.flush()
     
     queue = asyncio.Queue()
     last_addr = None
